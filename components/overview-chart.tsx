@@ -10,7 +10,8 @@ import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Settings2 } from 'lucide-react';
+import { Settings2, ChevronDown } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 interface OverviewChartProps {
 	data: DashboardData[];
@@ -36,6 +37,14 @@ const chartConfig = {
 	revenue: {
 		label: 'Revenue',
 		color: 'var(--chart-5)',
+	},
+	newRevenue: {
+		label: 'New Revenue',
+		color: 'oklch(0.7 0.15 145)', // Lighter Green
+	},
+	renewalRevenue: {
+		label: 'Renewal Revenue',
+		color: 'oklch(0.5 0.15 145)', // Darker Green
 	},
 	mrr: {
 		label: 'MRR',
@@ -68,7 +77,6 @@ const calculateRate = (numerator: number, denominator: number) => {
 const CustomTooltipContent = ({ active, payload, label }: TooltipProps<number, string>) => {
 	if (active && payload && payload.length) {
 		const dataPoint = payload[0].payload as any; // Using any to access computed properties
-		//const newRevenue = dataPoint.revenue - dataPoint.renewalRevenue;
 
 		return (
 			<div className="rounded-lg border bg-background p-4 shadow-sm min-w-[300px]">
@@ -178,6 +186,23 @@ const CustomTooltipContent = ({ active, payload, label }: TooltipProps<number, s
 						})}
 					{Object.keys(dataPoint.referringDomains).length === 0 && <span className="text-muted-foreground italic">No referral data</span>}
 				</div>
+				<div className="mb-2 border-b pb-1 mt-2">
+					<h4 className="text-xs font-semibold text-muted-foreground">Revenue Breakdown</h4>
+				</div>
+				<div className="text-xs grid grid-cols-2 gap-2">
+					<div className="flex justify-between">
+						<span>New:</span>
+						<span className="font-medium">${dataPoint.newRevenue.toLocaleString()}</span>
+					</div>
+					<div className="flex justify-between">
+						<span>Renewal:</span>
+						<span className="font-medium">${dataPoint.renewalRevenue.toLocaleString()}</span>
+					</div>
+					<div className="flex justify-between col-span-2">
+						<span>Churn Rate:</span>
+						<span className="font-medium">{(dataPoint.churnRate * 100).toFixed(2)}%</span>
+					</div>
+				</div>
 			</div>
 		);
 	}
@@ -185,17 +210,22 @@ const CustomTooltipContent = ({ active, payload, label }: TooltipProps<number, s
 };
 
 type MetricKey = keyof typeof chartConfig;
+type RevenueType = 'total' | 'new' | 'renewal';
 
 export function OverviewChart({ data }: OverviewChartProps) {
 	const [activeMetrics, setActiveMetrics] = useState<MetricKey[]>(['revenue', 'visitors', 'pricingViews', 'checkouts', 'purchases']);
 	const [customConfig, setCustomConfig] = useState({ numerator: 'purchases', denominator: 'visitors' });
+	const [revenueType, setRevenueType] = useState<RevenueType>('total');
 	const [isConfigOpen, setIsConfigOpen] = useState(false);
 
 	useEffect(() => {
 		const saved = localStorage.getItem('dashboard_active_metrics');
 		if (saved) {
 			try {
-				setActiveMetrics(JSON.parse(saved));
+				// Filter out 'mrr' if it was saved previously, as we're removing it as a toggle
+				const parsed = JSON.parse(saved);
+				const filtered = parsed.filter((m: string) => m !== 'mrr');
+				setActiveMetrics(filtered);
 			} catch (e) {
 				console.error('Failed to parse saved metrics', e);
 			}
@@ -225,6 +255,7 @@ export function OverviewChart({ data }: OverviewChartProps) {
 	const processedData = useMemo(() => {
 		return data.map((item) => ({
 			...item,
+			newRevenue: item.revenue - item.renewalRevenue,
 			visitorToPriceViewRate: calculateRate(item.pricingViews, item.visitors),
 			priceViewToCheckoutRate: calculateRate(item.checkouts, item.pricingViews),
 			checkoutToPurchaseRate: calculateRate(item.purchases, item.checkouts),
@@ -238,93 +269,149 @@ export function OverviewChart({ data }: OverviewChartProps) {
 		{ value: 'checkouts', label: 'Checkouts' },
 		{ value: 'purchases', label: 'Purchases' },
 		{ value: 'mrr', label: 'MRR' },
-		// Excluding Revenue for now as it doesn't make sense in rate calc usually (e.g. Visitors/Revenue?)
 	];
 
 	const rateMetrics: MetricKey[] = ['visitorToPriceViewRate', 'priceViewToCheckoutRate', 'checkoutToPurchaseRate', 'customRate'];
 	const isOnlyRates = activeMetrics.length > 0 && activeMetrics.every((m) => rateMetrics.includes(m));
 
+	// Keys to show buttons for (exclude 'mrr' and internal revenue types)
+	const toggleKeys: MetricKey[] = ['revenue', 'visitors', 'pricingViews', 'checkouts', 'purchases', ...rateMetrics];
+
 	return (
 		<div className="space-y-4">
 			<div className="flex flex-wrap gap-2 items-center">
-				{(Object.keys(chartConfig) as MetricKey[]).map((metric) => (
-					<div key={metric} className="flex items-center gap-1">
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => toggleMetric(metric)}
-							className={cn(
-								'border-2',
-								activeMetrics.includes(metric) ? 'bg-accent/50 border-[color:var(--color-border-active)]' : 'opacity-50 grayscale'
+				{toggleKeys.map((metric) => {
+					if (metric === 'revenue') {
+						return (
+							<div key={metric} className="flex items-center gap-1">
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={() => toggleMetric(metric)}
+									className={cn(
+										'border-2 rounded-r-none border-r-0',
+										activeMetrics.includes(metric)
+											? 'bg-accent/50 border-[color:var(--color-border-active)]'
+											: 'opacity-50 grayscale'
+									)}
+									style={
+										{
+											'--color-border-active': chartConfig[metric].color,
+										} as React.CSSProperties
+									}
+								>
+									<div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: chartConfig[metric].color }} />
+									{revenueType === 'total' ? 'Revenue' : revenueType === 'new' ? 'New Rev' : 'Renewal'}
+								</Button>
+								<DropdownMenu>
+									<DropdownMenuTrigger asChild>
+										<Button
+											variant="outline"
+											size="sm"
+											className={cn(
+												'px-2 border-2 border-l-0 rounded-l-none',
+												activeMetrics.includes(metric)
+													? 'bg-accent/50 border-[color:var(--color-border-active)]'
+													: 'opacity-50 grayscale'
+											)}
+											style={
+												{
+													'--color-border-active': chartConfig[metric].color,
+												} as React.CSSProperties
+											}
+										>
+											<ChevronDown className="h-4 w-4" />
+										</Button>
+									</DropdownMenuTrigger>
+									<DropdownMenuContent>
+										<DropdownMenuItem onClick={() => setRevenueType('total')}>Total Revenue</DropdownMenuItem>
+										<DropdownMenuItem onClick={() => setRevenueType('new')}>New Revenue</DropdownMenuItem>
+										<DropdownMenuItem onClick={() => setRevenueType('renewal')}>Renewal Revenue</DropdownMenuItem>
+									</DropdownMenuContent>
+								</DropdownMenu>
+							</div>
+						);
+					}
+
+					return (
+						<div key={metric} className="flex items-center gap-1">
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => toggleMetric(metric)}
+								className={cn(
+									'border-2',
+									activeMetrics.includes(metric) ? 'bg-accent/50 border-[color:var(--color-border-active)]' : 'opacity-50 grayscale'
+								)}
+								style={
+									{
+										// Use CSS variable injection for dynamic border color based on chart config
+										'--color-border-active': chartConfig[metric].color,
+									} as React.CSSProperties
+								}
+							>
+								<div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: chartConfig[metric].color }} />
+								{chartConfig[metric].label}
+							</Button>
+							{metric === 'customRate' && (
+								<Dialog open={isConfigOpen} onOpenChange={setIsConfigOpen}>
+									<DialogTrigger asChild>
+										<Button variant="ghost" size="icon" className="h-8 w-8">
+											<Settings2 className="h-4 w-4" />
+										</Button>
+									</DialogTrigger>
+									<DialogContent>
+										<DialogHeader>
+											<DialogTitle>Configure Custom Rate</DialogTitle>
+										</DialogHeader>
+										<div className="grid gap-4 py-4">
+											<div className="grid grid-cols-4 items-center gap-4">
+												<Label htmlFor="numerator" className="text-right">
+													Numerator
+												</Label>
+												<Select
+													value={customConfig.numerator}
+													onValueChange={(val) => saveCustomConfig({ ...customConfig, numerator: val })}
+												>
+													<SelectTrigger className="col-span-3">
+														<SelectValue placeholder="Select metric" />
+													</SelectTrigger>
+													<SelectContent>
+														{metricOptions.map((opt) => (
+															<SelectItem key={opt.value} value={opt.value}>
+																{opt.label}
+															</SelectItem>
+														))}
+													</SelectContent>
+												</Select>
+											</div>
+											<div className="grid grid-cols-4 items-center gap-4">
+												<Label htmlFor="denominator" className="text-right">
+													Denominator
+												</Label>
+												<Select
+													value={customConfig.denominator}
+													onValueChange={(val) => saveCustomConfig({ ...customConfig, denominator: val })}
+												>
+													<SelectTrigger className="col-span-3">
+														<SelectValue placeholder="Select metric" />
+													</SelectTrigger>
+													<SelectContent>
+														{metricOptions.map((opt) => (
+															<SelectItem key={opt.value} value={opt.value}>
+																{opt.label}
+															</SelectItem>
+														))}
+													</SelectContent>
+												</Select>
+											</div>
+										</div>
+									</DialogContent>
+								</Dialog>
 							)}
-							style={
-								{
-									// Use CSS variable injection for dynamic border color based on chart config
-									'--color-border-active': chartConfig[metric].color,
-								} as React.CSSProperties
-							}
-						>
-							<div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: chartConfig[metric].color }} />
-							{chartConfig[metric].label}
-						</Button>
-						{metric === 'customRate' && (
-							<Dialog open={isConfigOpen} onOpenChange={setIsConfigOpen}>
-								<DialogTrigger asChild>
-									<Button variant="ghost" size="icon" className="h-8 w-8">
-										<Settings2 className="h-4 w-4" />
-									</Button>
-								</DialogTrigger>
-								<DialogContent>
-									<DialogHeader>
-										<DialogTitle>Configure Custom Rate</DialogTitle>
-									</DialogHeader>
-									<div className="grid gap-4 py-4">
-										<div className="grid grid-cols-4 items-center gap-4">
-											<Label htmlFor="numerator" className="text-right">
-												Numerator
-											</Label>
-											<Select
-												value={customConfig.numerator}
-												onValueChange={(val) => saveCustomConfig({ ...customConfig, numerator: val })}
-											>
-												<SelectTrigger className="col-span-3">
-													<SelectValue placeholder="Select metric" />
-												</SelectTrigger>
-												<SelectContent>
-													{metricOptions.map((opt) => (
-														<SelectItem key={opt.value} value={opt.value}>
-															{opt.label}
-														</SelectItem>
-													))}
-												</SelectContent>
-											</Select>
-										</div>
-										<div className="grid grid-cols-4 items-center gap-4">
-											<Label htmlFor="denominator" className="text-right">
-												Denominator
-											</Label>
-											<Select
-												value={customConfig.denominator}
-												onValueChange={(val) => saveCustomConfig({ ...customConfig, denominator: val })}
-											>
-												<SelectTrigger className="col-span-3">
-													<SelectValue placeholder="Select metric" />
-												</SelectTrigger>
-												<SelectContent>
-													{metricOptions.map((opt) => (
-														<SelectItem key={opt.value} value={opt.value}>
-															{opt.label}
-														</SelectItem>
-													))}
-												</SelectContent>
-											</Select>
-										</div>
-									</div>
-								</DialogContent>
-							</Dialog>
-						)}
-					</div>
-				))}
+						</div>
+					);
+				})}
 			</div>
 
 			<ChartContainer config={chartConfig} className="min-h-[400px] w-full">
@@ -411,15 +498,18 @@ export function OverviewChart({ data }: OverviewChartProps) {
 						<Line
 							yAxisId="right"
 							type="monotone"
-							dataKey="revenue"
-							stroke="var(--color-revenue)"
+							dataKey={revenueType === 'total' ? 'revenue' : revenueType === 'new' ? 'newRevenue' : 'renewalRevenue'}
+							stroke={
+								revenueType === 'total'
+									? chartConfig.revenue.color
+									: revenueType === 'new'
+									? chartConfig.newRevenue.color
+									: chartConfig.renewalRevenue.color
+							}
 							strokeWidth={2}
 							dot={false}
-							name="Revenue"
+							name={revenueType === 'total' ? 'Revenue' : revenueType === 'new' ? 'New Revenue' : 'Renewal Revenue'}
 						/>
-					)}
-					{activeMetrics.includes('mrr') && (
-						<Line yAxisId="right" type="monotone" dataKey="mrr" stroke={chartConfig.mrr.color} strokeWidth={2} dot={false} name="MRR" />
 					)}
 
 					{/* Rate Lines - Using percentage axis */}
