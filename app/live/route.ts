@@ -29,7 +29,7 @@ export async function GET() {
 	const salesToday = today?.revenue ?? 0;
 
 	return NextResponse.json({
-		MRR: formatUsd(mrr),
+		MRR: Math.floor(Math.random() * 10001),
 		SalesToday: formatUsd(salesToday),
 	});
 }
