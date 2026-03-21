@@ -1,20 +1,20 @@
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
 
-import { fetchLemonSqueezyData } from "@/lib/lemonsqueezy";
+import { fetchLemonSqueezyData } from '@/lib/lemonsqueezy';
 
 /** USD string like "$4,005" — whole dollars, no cents */
 function formatUsd(amount: number): string {
 	const dollars = Math.round(amount);
-	return new Intl.NumberFormat("en-US", {
-		style: "currency",
-		currency: "USD",
+	return new Intl.NumberFormat('en-US', {
+		style: 'currency',
+		currency: 'USD',
 		minimumFractionDigits: 0,
 		maximumFractionDigits: 0,
 	}).format(dollars);
 }
 
 function utcDayBounds(): { dayKey: string; start: Date; end: Date } {
-	const dayKey = new Date().toISOString().split("T")[0];
+	const dayKey = new Date().toISOString().split('T')[0];
 	const start = new Date(`${dayKey}T00:00:00.000Z`);
 	const end = new Date(`${dayKey}T23:59:59.999Z`);
 	return { dayKey, start, end };
@@ -29,7 +29,7 @@ export async function GET() {
 	const salesToday = today?.revenue ?? 0;
 
 	return NextResponse.json({
-		MRR: Math.floor(Math.random() * 10001),
+		MRR: formatUsd(Math.floor(Math.random() * 10001)),
 		SalesToday: formatUsd(salesToday),
 	});
 }
